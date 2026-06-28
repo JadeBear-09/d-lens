@@ -1,0 +1,45 @@
+[project]
+name = "d-lens"
+version = "0.1.0"
+description = "LLM reliability and root-cause analysis microservice"
+requires-python = ">=3.11"
+dependencies = [
+  "alembic>=1.13.2",
+  "celery>=5.4.0",
+  "fastapi>=0.115.0",
+  "openai>=1.55.0",
+  "prometheus-client>=0.20.0",
+  "psycopg[binary]>=3.2.1",
+  "pydantic-settings>=2.4.0",
+  "pydantic>=2.8.0",
+  "qdrant-client>=1.11.0",
+  "redis>=5.0.8",
+  "sqlalchemy>=2.0.32",
+  "uvicorn[standard]>=0.30.6",
+]
+
+[project.optional-dependencies]
+dev = [
+  "httpx>=0.27.2",
+  "pytest>=8.3.2",
+  "ruff>=0.6.9",
+]
+
+[build-system]
+requires = ["setuptools>=70", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["app*"]
+exclude = ["tests*", "sample_payloads*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM"]

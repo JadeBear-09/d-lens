@@ -1,0 +1,32 @@
+{
+  "request_id": "req_001",
+  "app_name": "customer-support-rag",
+  "user_query": "Why was my payment declined?",
+  "retrieved_chunks": [
+    {
+      "chunk_id": "doc_1",
+      "text": "Refunds are processed within 5-7 days.",
+      "score": 0.41
+    },
+    {
+      "chunk_id": "doc_2",
+      "text": "Payment failures may happen due to insufficient balance or bank decline.",
+      "score": 0.72
+    }
+  ],
+  "llm_answer": "Your refund will arrive in 5-7 days.",
+  "tool_calls": [
+    {
+      "tool_name": "payment_status_api",
+      "status": "failed",
+      "latency_ms": 1200,
+      "error": "HTTP 503"
+    }
+  ],
+  "latency_ms": 4300,
+  "input_tokens": 900,
+  "output_tokens": 500,
+  "json_valid": false,
+  "user_feedback": "thumbs_down",
+  "timestamp": "2026-06-23T10:30:00Z"
+}

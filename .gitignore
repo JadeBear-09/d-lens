@@ -1,0 +1,15 @@
+.DS_Store
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.venv/
+.test-venv/
+venv/
+.env
+*.db
+*.sqlite
+dist/
+build/
+*.egg-info/
+LOCAL_GCP_MVP_TROUBLESHOOTING_NOTES.md
