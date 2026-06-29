@@ -1,58 +1,80 @@
 # D-Lens
 
-D-Lens is a microservice for diagnosing failures in LLM apps.
+<p align="center">
+  <a href="https://github.com/JadeBear-09/d-lens/stargazers"><img alt="GitHub stars" src="https://img.shields.io/github/stars/JadeBear-09/d-lens?style=social"></a>
+  <a href="https://github.com/JadeBear-09/d-lens/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/JadeBear-09/d-lens/actions/workflows/ci.yml/badge.svg"></a>
+  <img alt="Last commit" src="https://img.shields.io/github/last-commit/JadeBear-09/d-lens">
+  <img alt="Issues" src="https://img.shields.io/github/issues/JadeBear-09/d-lens">
+  <img alt="Python" src="https://img.shields.io/badge/python-3.11+-3776AB?logo=python&logoColor=white">
+  <img alt="FastAPI" src="https://img.shields.io/badge/FastAPI-009688?logo=fastapi&logoColor=white">
+  <img alt="Postgres" src="https://img.shields.io/badge/Postgres-ready-4169E1?logo=postgresql&logoColor=white">
+  <img alt="Docker" src="https://img.shields.io/badge/Docker-compose-2496ED?logo=docker&logoColor=white">
+</p>
 
-Your chatbot, RAG pipeline, or agent sends one request trace to D-Lens. D-Lens stores the trace, classifies the likely failure, scores severity, builds evidence, suggests fixes, and can search for similar past reports.
+<p align="center">
+  <a href="https://dlens-api-wuscfbl3cq-el.a.run.app/docs">Live API docs</a>
+  · <a href="#quick-start">Quick start</a>
+  · <a href="#api-surface">API</a>
+  · <a href="#failure-taxonomy">Failure taxonomy</a>
+  · <a href="docs/COMMIT_GUIDE.md">Commit guide</a>
+</p>
 
-It works offline by default with deterministic rules. If `OPENAI_API_KEY` is set, it can use an LLM to improve report wording while keeping the rule-based failure type, severity, evidence, and actions as the source of truth.
+D-Lens is a reliability and root-cause analysis microservice for LLM applications. Send
+one chatbot, RAG, or agent trace to D-Lens and get a structured diagnosis: failure type,
+severity, evidence, likely root cause, and suggested actions.
 
-## What It Is For
+It works offline by default with deterministic rules. When `OPENAI_API_KEY` is set, it
+can use an LLM to improve report wording while rule-based failure type, severity,
+evidence, and actions remain the source of truth.
 
-- Debugging bad LLM answers
-- Checking retrieval quality
-- Detecting invalid JSON output
-- Detecting failed tool/API calls
-- Tracking latency and token-cost spikes
-- Saving RCA reports for later lookup
-- Finding similar previous failures
-- Exposing Prometheus metrics
+## What It Solves
 
-## Run Locally
+| Signal | What D-Lens checks |
+| --- | --- |
+| Retrieval quality | Low-score context, missing citations, weak evidence |
+| Output validity | Invalid JSON and schema-hostile responses |
+| Tool reliability | Failed API/tool calls and surfaced errors |
+| Performance | Latency spikes and token-cost spikes |
+| Feedback | Negative user feedback and repeat incidents |
+| Operations | Stored RCA reports, similar-incident lookup, Prometheus metrics |
+
+## Architecture
+
+```text
+LLM app trace
+  -> FastAPI ingestion endpoint
+  -> deterministic reliability checks
+  -> severity scoring
+  -> RCA report builder
+  -> optional LLM wording pass
+  -> Postgres report store
+  -> Qdrant similar-report search
+  -> Prometheus metrics
+```
+
+Local Docker Compose starts FastAPI, Celery, Postgres, Redis, and Qdrant. Non-Docker
+development can fall back to SQLite at `./dlens.db`.
+
+## Quick Start
 
 ```bash
 cp .env.example .env
 docker compose up --build
 ```
 
-API docs:
+Open:
 
 ```text
-http://localhost:8000/docs
+API docs: http://localhost:8000/docs
+Health:   http://localhost:8000/health
+Status:   http://localhost:8000/status
+Metrics:  http://localhost:8000/metrics
 ```
 
-Health/status:
+In local `ENV=dev`, protected routes work without `DLENS_API_KEY`. In non-dev
+environments, set `DLENS_API_KEY` and send it as `X-API-Key`.
 
-```bash
-curl http://localhost:8000/health
-curl http://localhost:8000/status
-```
-
-In local `ENV=dev`, protected routes work without `DLENS_API_KEY`. In non-dev environments, set `DLENS_API_KEY` and send it as `X-API-Key`.
-
-## Main Flow
-
-```text
-LLM app trace
-  -> POST /api/v1/analyze or /api/v1/traces
-  -> D-Lens classifies failure
-  -> D-Lens scores severity
-  -> D-Lens returns or stores RCA report
-  -> reports can be listed, fetched, or searched for similar failures
-```
-
-## Input Trace
-
-Send JSON shaped like this:
+## Example Trace
 
 ```json
 {
@@ -84,29 +106,24 @@ Send JSON shaped like this:
 }
 ```
 
-Required fields:
+Analyze immediately:
 
-- `request_id`
-- `user_query`
+```bash
+curl -X POST http://localhost:8000/api/v1/analyze \
+  -H "Content-Type: application/json" \
+  -d @sample_payloads/bad_rag_trace.json
+```
 
-Useful optional fields:
+With API key enabled:
 
-- `app_name`
-- `retrieved_chunks`
-- `llm_answer`
-- `tool_calls`
-- `latency_ms`
-- `input_tokens`
-- `output_tokens`
-- `json_valid`
-- `user_feedback`
-- `timestamp`
-
-Extra fields are allowed and stored with the raw trace.
+```bash
+curl -X POST "$DLENS_URL/api/v1/analyze" \
+  -H "X-API-Key: $DLENS_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d @sample_payloads/bad_rag_trace.json
+```
 
 ## Output Report
-
-`POST /api/v1/analyze` returns:
 
 ```json
 {
@@ -130,16 +147,18 @@ Extra fields are allowed and stored with the raw trace.
 }
 ```
 
-Failure types:
+## Failure Taxonomy
 
-- `retrieval_failure`
-- `hallucination_risk`
-- `invalid_json`
-- `tool_call_failure`
-- `latency_spike`
-- `token_cost_spike`
-- `user_dissatisfaction`
-- `unknown`
+| Failure type | Typical trigger |
+| --- | --- |
+| `retrieval_failure` | Retrieved context score is too low |
+| `hallucination_risk` | Answer does not look grounded in retrieved evidence |
+| `invalid_json` | `json_valid=false` or downstream schema failure |
+| `tool_call_failure` | Tool/API call reports failed status or error |
+| `latency_spike` | Request crosses configured latency threshold |
+| `token_cost_spike` | Token usage crosses configured cost threshold |
+| `user_dissatisfaction` | User feedback is negative |
+| `unknown` | Trace lacks enough failure evidence |
 
 Severity:
 
@@ -148,55 +167,20 @@ Severity:
 - `P3`: latency/token warning, hallucination risk, or negative feedback
 - `P4`: low-risk or unknown signal
 
-## Endpoints
+## API Surface
 
 | Method | Path | Purpose |
 | --- | --- | --- |
-| `GET` | `/health` | Service status |
-| `GET` | `/status` | Service status and offline/online mode |
-| `POST` | `/api/v1/analyze` | Analyze one trace immediately and return report |
+| `GET` | `/health` | Service health |
+| `GET` | `/status` | Mode, dependency, and config status |
+| `POST` | `/api/v1/analyze` | Analyze one trace immediately |
 | `POST` | `/api/v1/traces` | Store trace and queue/background analysis |
 | `GET` | `/api/v1/reports?limit=20` | List recent reports |
 | `GET` | `/api/v1/reports/{trace_id}` | Fetch one report |
 | `GET` | `/api/v1/reports/{trace_id}/similar?limit=5` | Find similar reports |
 | `GET` | `/metrics` | Prometheus metrics |
 
-## Example Calls
-
-Analyze immediately:
-
-```bash
-curl -X POST http://localhost:8000/api/v1/analyze \
-  -H "Content-Type: application/json" \
-  -d @sample_payloads/bad_rag_trace.json
-```
-
-Queue analysis:
-
-```bash
-curl -X POST http://localhost:8000/api/v1/traces \
-  -H "Content-Type: application/json" \
-  -d @sample_payloads/bad_rag_trace.json
-```
-
-Fetch report:
-
-```bash
-curl http://localhost:8000/api/v1/reports/req_001
-```
-
-With API key enabled:
-
-```bash
-curl -X POST "$DLENS_URL/api/v1/analyze" \
-  -H "X-API-Key: $DLENS_API_KEY" \
-  -H "Content-Type: application/json" \
-  -d @sample_payloads/bad_rag_trace.json
-```
-
 ## Configuration
-
-Important environment variables:
 
 | Variable | Purpose |
 | --- | --- |
@@ -209,22 +193,45 @@ Important environment variables:
 | `LATENCY_SPIKE_MS` | Spike threshold, default `5000` |
 | `MINOR_LATENCY_MS` | Warning threshold, default `3000` |
 | `TOKEN_COST_SPIKE` | Token warning threshold, default `3000` |
-| `OPENAI_API_KEY` | Optional; enables LLM-assisted RCA wording and OpenAI embeddings |
+| `OPENAI_API_KEY` | Optional LLM-assisted RCA wording and OpenAI embeddings |
 
-## Data Stores
+## Development
 
-Local Docker Compose starts:
+```bash
+python -m venv .venv
+source .venv/bin/activate
+python -m pip install -e ".[dev]"
+python -m ruff check .
+python -m pytest -q
+```
 
-- FastAPI app
-- Celery worker
-- Postgres
-- Redis
-- Qdrant
+## Project Map
 
-Default non-Docker config falls back to SQLite at `./dlens.db`.
+```text
+app/api/       FastAPI routes
+app/core/      config, security, metrics, logging
+app/db/        SQLAlchemy models and repository layer
+app/schemas/   Pydantic trace, report, and status contracts
+app/services/  classifier, severity, RCA, embeddings, vector search
+app/workers/   Celery app and background tasks
+tests/         pytest suite
+sample_payloads/ example traces for smoke testing
+```
 
-## Notes
+## Data Safety
 
-- `/api/v1/*` and `/metrics` use `X-API-Key` when `DLENS_API_KEY` is configured.
-- `/health`, `/status`, and `/docs` stay open.
-- D-Lens stores traces and reports; do not send secrets, full private prompts, or user data that should not be persisted.
+D-Lens stores traces and reports. Do not send secrets, full private prompts, payment
+data, health data, or user data that should not be persisted. For production use, add
+tenant isolation, retention policies, redaction, encryption, and access review.
+
+## Roadmap
+
+- Add richer evaluation fixtures for multi-signal incidents
+- Add OpenTelemetry trace IDs and dashboards
+- Add configurable failure policies per app/team
+- Add report export for incident review workflows
+- Add more embedding/vector backends for similar-incident search
+
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) and [docs/COMMIT_GUIDE.md](docs/COMMIT_GUIDE.md).
