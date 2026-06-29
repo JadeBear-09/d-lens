@@ -12,13 +12,3 @@ venv/
 dist/
 build/
 *.egg-info/
-LOCAL_GCP_MVP_TROUBLESHOOTING_NOTES.md
-
-# Private notes / non-public review material
-*[Ii]nterview*.md
-*[Rr]esume*.md
-*[Ss]tudy*.md
-*[Ll]earning*.md
-*[Cc]hecklist*.md
-*[Pp]rivate*.md
-*[Nn]otes*.md
